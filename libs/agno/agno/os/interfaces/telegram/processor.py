@@ -35,6 +35,7 @@ from agno.workflow import RemoteWorkflow, Workflow
 
 try:
     from telebot.async_telebot import AsyncTeleBot
+    from telebot.types import ReactionTypeEmoji
 except ImportError as e:
     raise ImportError(
         "`pyTelegramBotAPI` not installed. Please install using `pip install 'agno[telegram]'`"
@@ -76,6 +77,7 @@ class TelegramMessageProcessor:
         commands: Optional[List[dict]] = None,
         register_commands: bool = True,
         new_message: str = "New conversation started. How can I help you?",
+        react_emoji: Optional[str] = None,
     ):
         if entity_type not in ("agent", "team", "workflow"):
             raise ValueError(f"entity_type must be one of 'agent', 'team', 'workflow', got '{entity_type}'")
@@ -92,6 +94,7 @@ class TelegramMessageProcessor:
         self.new_message = new_message
         self.commands = commands
         self.register_commands = register_commands
+        self.react_emoji = react_emoji
 
         entity_id = getattr(entity, "id", None) or getattr(entity, "name", None) or entity_type
         session_config = build_session_store_config(entity, entity_type)
@@ -163,6 +166,30 @@ class TelegramMessageProcessor:
         await send_message(
             self.bot, chat_id, self.error_message, reply_to_message_id=reply_to, message_thread_id=message_thread_id
         )
+
+    async def _add_reaction(self, chat_id: int, message_id: int, emoji: str) -> None:
+        """Add emoji reaction to a message (best-effort, non-blocking)."""
+        if not emoji:
+            return
+        try:
+            await self.bot.set_message_reaction(
+                chat_id=chat_id,
+                message_id=message_id,
+                reaction=[ReactionTypeEmoji(emoji=emoji)],
+            )
+        except Exception as e:
+            log_debug(f"Telegram reaction failed: {e}")
+
+    async def _remove_reaction(self, chat_id: int, message_id: int) -> None:
+        """Remove emoji reaction from a message (best-effort, non-blocking)."""
+        try:
+            await self.bot.set_message_reaction(
+                chat_id=chat_id,
+                message_id=message_id,
+                reaction=[],
+            )
+        except Exception as e:
+            log_debug(f"Telegram reaction removal failed: {e}")
 
     async def _stream_response(
         self,
@@ -315,8 +342,14 @@ class TelegramMessageProcessor:
 
             await self.bot.send_chat_action(chat_id, "typing", message_thread_id=message_thread_id)
 
+            # Add eye reaction to indicate processing
+            if self.react_emoji and incoming_message_id:
+                await self._add_reaction(chat_id, incoming_message_id, self.react_emoji)
+
             extracted = await extract_message_payload(self.bot, message)
             if extracted is None:
+                if self.react_emoji and incoming_message_id:
+                    await self._remove_reaction(chat_id, incoming_message_id)
                 return
             message_text = extracted.pop("message", "")
             warning = extracted.pop("warning", None)
@@ -327,6 +360,8 @@ class TelegramMessageProcessor:
                 message_text = re.sub(rf"@{re.escape(bot_username)}\b", "", message_text, flags=re.IGNORECASE).strip()
 
             if not message_text and not any(extracted.get(k) for k in ("images", "audio", "videos", "files")):
+                if self.react_emoji and incoming_message_id:
+                    await self._remove_reaction(chat_id, incoming_message_id)
                 return
 
             session_id = session_scope
@@ -351,6 +386,10 @@ class TelegramMessageProcessor:
                 )
             else:
                 await self._sync_response(message_text, run_kwargs, chat_id, reply_to, message_thread_id)
+
+            # Remove reaction after response is sent
+            if self.react_emoji and incoming_message_id:
+                await self._remove_reaction(chat_id, incoming_message_id)
 
         except Exception as e:
             log_error(f"Error processing message: {e}", exc_info=True)

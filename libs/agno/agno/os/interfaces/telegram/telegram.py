@@ -102,6 +102,7 @@ class Telegram(BaseInterface):
                 commands=self.commands,
                 register_commands=self.register_commands,
                 new_message=self.new_message,
+                react_emoji=self.react_emoji,
             )
         return self._processor
 
