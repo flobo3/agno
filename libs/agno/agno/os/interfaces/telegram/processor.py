@@ -78,6 +78,7 @@ class TelegramMessageProcessor:
         register_commands: bool = True,
         new_message: str = "New conversation started. How can I help you?",
         react_emoji: Optional[str] = None,
+        reply_to_messages: bool = False,
     ):
         if entity_type not in ("agent", "team", "workflow"):
             raise ValueError(f"entity_type must be one of 'agent', 'team', 'workflow', got '{entity_type}'")
@@ -95,6 +96,7 @@ class TelegramMessageProcessor:
         self.commands = commands
         self.register_commands = register_commands
         self.react_emoji = react_emoji
+        self.reply_to_messages = reply_to_messages
 
         entity_id = getattr(entity, "id", None) or getattr(entity, "name", None) or entity_type
         session_config = build_session_store_config(entity, entity_type)
@@ -377,7 +379,7 @@ class TelegramMessageProcessor:
             log_info(f"Processing message from user {user_id}")
             log_debug(f"Message content: {message_text}")
 
-            reply_to = incoming_message_id if is_group else None
+            reply_to = incoming_message_id if (is_group or self.reply_to_messages) else None
             run_kwargs = dict(user_id=user_id, session_id=session_id, **extracted)
 
             if self.streaming:

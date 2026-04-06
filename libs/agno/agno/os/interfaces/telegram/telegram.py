@@ -48,6 +48,7 @@ class Telegram(BaseInterface):
         register_commands: bool = True,
         new_message: str = DEFAULT_NEW_MESSAGE,
         react_emoji: Optional[str] = None,
+        reply_to_messages: bool = False,
     ):
         self.agent = agent
         self.team = team
@@ -67,6 +68,7 @@ class Telegram(BaseInterface):
         self.register_commands = register_commands
         self.new_message = new_message
         self.react_emoji = react_emoji
+        self.reply_to_messages = reply_to_messages
 
         if not (self.agent or self.team or self.workflow):
             raise ValueError("Telegram requires an agent, team, or workflow")
@@ -103,6 +105,7 @@ class Telegram(BaseInterface):
                 register_commands=self.register_commands,
                 new_message=self.new_message,
                 react_emoji=self.react_emoji,
+                reply_to_messages=self.reply_to_messages,
             )
         return self._processor
 
@@ -130,6 +133,7 @@ class Telegram(BaseInterface):
             register_commands=self.register_commands,
             new_message=self.new_message,
             react_emoji=self.react_emoji,
+            reply_to_messages=self.reply_to_messages,
         )
 
     async def start_polling(self) -> None:
